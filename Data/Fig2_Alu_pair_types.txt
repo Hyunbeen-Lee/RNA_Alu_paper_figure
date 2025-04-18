@@ -1,0 +1,5 @@
+group	type_meta	count	perc	orientation	total
+Background_Alu	direct	5999	0.583787465940055	direct	10276
+Background_Alu	inverted	4277	0.416212534059946	inverted	10276
+SPLASH_captured_Alu	direct	14	0.0673076923076923	direct	208
+SPLASH_captured_Alu	inverted	194	0.932692307692308	inverted	208
