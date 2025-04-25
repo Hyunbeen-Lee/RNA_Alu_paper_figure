@@ -10,7 +10,6 @@ Our work integrates computational prediction of intronic RNA stem-loop structure
 
 ## Repository Structure
 
-- **README.md** – This file.
 - **Data/** – Contains input files such as:
   - `alu_meta_ext.txt` – Annotation of intronic Alu pairs.
   - Plotting data files (e.g. `Chimp_plot_data.tsv`, `orangutan_plot_data.tsv`, etc.).
