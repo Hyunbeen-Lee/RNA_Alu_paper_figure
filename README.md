@@ -17,8 +17,9 @@ Our work integrates computational prediction of intronic RNA stem-loop structure
   - EvoPSI subfolder with compressed tables for pairwise comparisons.
 - **Figures/** – Generated figures (e.g. `Fig_1A.PNG`, `Figure1.pdf`, `Figure2.pdf`, etc.).
 - **Notebooks/** – Jupyter notebooks for data analysis and plotting:
-  - [`Figure2.ipynb`](Notebooks/Figure2.ipynb) – Contains code for primate enrichment and pairwise comparisons.
   - [`Figure1.ipynb`](Notebooks/Figure1.ipynb) – Provides code for enrichment plots and additional comparisons.
+  - [`Figure2.ipynb`](Notebooks/Figure2.ipynb) – Contains code for primate enrichment and pairwise comparisons.
+
 
 ## Dependencies
 
