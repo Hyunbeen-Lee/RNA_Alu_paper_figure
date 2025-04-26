@@ -18,7 +18,7 @@ Our work integrates computational prediction of intronic RNA stem-loop structure
 - **Notebooks/** – Jupyter notebooks for data analysis and plotting:
   - [`Figure1.ipynb`](Notebooks/Figure1.ipynb) – Provides code for enrichment plots and additional comparisons.
   - [`Figure2.ipynb`](Notebooks/Figure2.ipynb) – Contains code for primate enrichment and pairwise comparisons.
-  - [`karrseq_figures.R`](Notebooks/karrseq_figures.R) – Processes and visualizes KARR-Seq RNA-RNA proximity interaction data
+  - [`FigureS2.Rmd`](Notebooks/FigureS2.Rmd) – Analysis of KARR-Seq RNA-proximity ligation data.
 
 ## Dependencies
 
