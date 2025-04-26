@@ -1,0 +1,319 @@
+---
+title: "Figure S2: KARR-seq and Alu-pair analyses"
+author: "Ira Iosub"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '3'
+    df_print: paged
+  html_notebook:
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+    theme: paper
+    highlight: monochrome
+    df_print: paged
+    code_folding: hide
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+suppressPackageStartupMessages({
+  library(data.table)
+  library(tidyverse)
+  library(ggpubr)
+  library(cowplot)
+})
+```
+
+
+# Functions
+
+```{r}
+get_ks_pvalue <- function(a, b) {
+  p <- ks.test(a, b)$p.value
+  if (p <= 0.001) "***" else if (p <= 0.01) "**" else if (p <= 0.05) "*" else "ns"
+}
+
+```
+
+
+# Fig S2A: KARR-seq captured Alu pairs
+
+```{r}
+# Load background Alu pairs
+alu.df <- fread("master_table_updated.tsv") %>%
+  mutate(id = paste0("id", row_number())) %>%
+  filter(repeat_pair == TRUE,
+         !str_detect(repeat_1, "No overlap"),
+         !str_detect(repeat_2, "No overlap"),
+         str_detect(repeat_1, "Alu") & str_detect(repeat_2, "Alu")) %>%
+  mutate(id = paste(id, pair_type, sep = "_"))
+
+background_counts.df <- alu.df %>%
+  group_by(pair_type) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(group = "background")
+
+# Load KARR-seq overlaps
+karrseq.dt <- fread("pair2pair_hits/alu_hits/karrseq_hek293_g1.hits.bedpe", header = FALSE) %>%
+  rename(id = V7) %>%
+  mutate(pair_type = if_else(str_detect(id, "direct"), "direct", "inverted")) 
+
+
+karrseq_counts.df <- karrseq.dt %>%
+  group_by(pair_type) %>%
+  summarise(count = n_distinct(id), .groups = "drop") %>%
+  mutate(group = "KARR-seq")
+
+karrseq_nuc.dt <- fread("pair2pair_hits/alu_hits/karrseq_k562_nuc_ars.hits.bedpe", header = FALSE) %>%
+  rename(id = V7) %>%
+  mutate(pair_type = if_else(str_detect(id, "direct"), "direct", "inverted")) 
+
+
+karrseq_nuc_counts.df <- karrseq_nuc.dt %>%
+  group_by(pair_type) %>%
+  summarise(count = n_distinct(id), .groups = "drop") %>%
+  mutate(group = "KARR-seq_nuclear")
+
+
+# Combine and prepare data
+data_sub <- bind_rows(background_counts.df, karrseq_counts.df, karrseq_nuc_counts.df) %>%
+  rename(orientation = pair_type) %>%
+  as.data.table()
+
+data_sub[, total := sum(count), by = group]
+data_sub[, perc := count *100 / total]
+
+# Fisher tests
+contingency_table <- dcast(data_sub, group ~ orientation, value.var = "count")
+contingency_mat_hek <- as.matrix(contingency_table[match(c("background", "KARR-seq"), group), -1])
+fisher_result_hek <- fisher.test(contingency_mat_hek)
+
+contingency_mat_k562 <- as.matrix(contingency_table[match(c("background", "KARR-seq_nuclear"), group), -1])
+fisher_result_k562 <- fisher.test(contingency_mat_k562)
+
+sig_label_hek <- ifelse(fisher_result_hek$p.value <= 0.001, "***",
+                        ifelse(fisher_result_hek$p.value <= 0.01, "**",
+                               ifelse(fisher_result_hek$p.value <= 0.05, "*", "ns")))
+
+sig_label_k562 <- ifelse(fisher_result_k562$p.value <= 0.001, "***",
+                         ifelse(fisher_result_k562$p.value <= 0.01, "**",
+                                ifelse(fisher_result_k562$p.value <= 0.05, "*", "ns")))
+
+# Bar plot of captured Alu pairs
+karrseq_fig_s2a <- ggplot(data_sub, aes(x = group, y = perc, fill = orientation)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  scale_fill_manual(name = "Alu-pair", values = c("inverted" = "red", "direct" = "blue")) +
+  geom_text(aes(label = count), position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  scale_x_discrete(labels = c(
+    "background" = "Background Alu",
+    "KARR-seq" = "KARR-seq captured Alu",
+    "KARR-seq_nuclear" = "KARR-seq (nuclear)\ncaptured Alu"
+  )) +
+  geom_signif(comparisons = list(c("background", "KARR-seq"), c("background", "KARR-seq_nuclear")),
+              annotations = c(sig_label_hek, sig_label_k562),
+              y_position = c(100, 105), tip_length = 0.02, textsize = 3) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  guides(fill = guide_legend(reverse = TRUE)) +
+  scale_y_continuous(
+    breaks  = seq(0, 100, by = 20),
+    #labels  = scales::percent_format(accuracy = 1),
+    expand  = c(0, 0),
+    limits  = c(0, 115)) +
+  theme_classic() +
+  theme(
+    axis.title.x    = element_blank(),
+    # axis.title.y    = element_blank(),
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    legend.direction= "vertical"
+  ) +
+  guides(fill = guide_legend(reverse = TRUE)) +
+  ylab("Percent")
+karrseq_fig_s2a
+
+```
+
+
+# Fig S2B: PSI analyses
+
+```{r}
+# Set colors for groups
+colors_group <- c(
+  "Background direct\nAlu-pairs" = "#00008B",
+  "KARR-seq captured\ndirect Alu-pairs" = "#0000FF",
+  "Background inverted\nAlu-pairs" = "#8B0000",
+  "KARR-seq captured\ninverted Alu-pairs" = "#FF0000"
+)
+```
+
+
+## HEK293
+
+```{r}
+hek293_psi.df <- fread("master_table_with_239T_PSI_updated.tsv.gz") %>%
+  dplyr::filter(repeat_pair == TRUE) %>%
+  dplyr::filter(!str_detect(repeat_1, "No overlap")) %>%
+  dplyr::filter(!str_detect(repeat_2, "No overlap")) %>%
+  dplyr::filter(str_detect(repeat_1, "Alu") & str_detect(repeat_2, "Alu")) # %>% dplyr::filter(alternative == "alternative")
+
+# Some checks:
+# length(intersect(alu.df$Exon_ID, hek293_psi.df$Exon_ID)) # exon IDs are not identical
+# Check repeats are the same in both files
+stopifnot(nrow(semi_join(hek293_psi.df, alu.df, by = c("transcript_ID", "repeat_1", "repeat_2", "pair_type", "score", "exon_sequence"))) == nrow(hek293_psi.df))
+
+# Match the repeat pair id from the background Alus
+hek293_psi.df <- left_join(hek293_psi.df, 
+                           alu.df %>%
+                             dplyr::select(transcript_ID, repeat_1, repeat_2, pair_type, id, score, exon_sequence),
+                           by = c("transcript_ID", "repeat_1", "repeat_2", "pair_type", "score", "exon_sequence")) %>%
+  mutate(group = case_when(pair_type == "direct" ~ "background_direct",
+                           TRUE ~ "background_inverted"))
+
+# Now assign them in the KARR-seq HEK293 overlapped data
+karrseq_hek293_psi.df <- hek293_psi.df %>%
+  dplyr::filter(id %in% unique(karrseq.dt$id)) %>%
+  mutate(group = case_when(pair_type == "direct" ~ "KARR-seq_direct",
+                           TRUE ~ "KARR-seq_inverted"))
+
+psi_hek293.df <- bind_rows(hek293_psi.df, karrseq_hek293_psi.df)
+
+plot_df_hek293 <- psi_hek293.df %>%
+  filter(!is.na(PSI_293T)) %>%
+  mutate(Group = factor(case_when(
+    group == "background_direct" ~ "Background direct\nAlu-pairs",
+    group == "KARR-seq_direct" ~ "KARR-seq captured\ndirect Alu-pairs",
+    group == "background_inverted" ~ "Background inverted\nAlu-pairs",
+    group == "KARR-seq_inverted" ~ "KARR-seq captured\ninverted Alu-pairs"
+  )))
+
+star_direct_hek293 <- get_ks_pvalue(
+  plot_df_hek293$PSI_293T[plot_df_hek293$Group == "Background direct\nAlu-pairs"],
+  plot_df_hek293$PSI_293T[plot_df_hek293$Group == "KARR-seq captured\ndirect Alu-pairs"])
+
+
+star_inverted_hek293 <- get_ks_pvalue(
+  plot_df_hek293$PSI_293T[plot_df_hek293$Group == "Background inverted\nAlu-pairs"],
+  plot_df_hek293$PSI_293T[plot_df_hek293$Group == "KARR-seq captured\ninverted Alu-pairs"])
+
+# Get y max for annotations
+y_top <- max(plot_df_hek293$PSI_293T, na.rm = TRUE) + 1.5
+y_star <- y_top + 0.5
+
+
+hek293_fig_s2b.gg <- ggplot(plot_df_hek293, aes(x = Group, y = PSI_293T, fill = Group)) +
+  geom_violin(trim = TRUE, alpha = 0.82, bw = 1) +
+  geom_boxplot(width = 0.05, outlier.shape = NA, fill = "black", color = "grey", linewidth = 0.3) +
+  scale_fill_manual(values = colors_group) +
+  theme_minimal(base_size = 11) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 9),
+    axis.title.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.position = "none"
+  ) +
+  coord_cartesian(ylim = c(80, 103)) +
+  scale_y_continuous(breaks = seq(80, 100, 5)) +
+  ylab("PSI (HEK293 cells)") +
+  annotate("segment", x = 1, xend = 2, y = y_top, yend = y_top, color = "black") +
+  annotate("text", x = 1.5, y = y_star, label = star_direct_hek293, size = 3) +
+  annotate("segment", x = 3, xend = 4, y = y_top, yend = y_top, color = "black") +
+  annotate("text", x = 3.5, y = y_star, label = star_inverted_hek293, size = 3) 
+
+hek293_fig_s2b.gg
+```
+
+## K562
+
+```{r}
+# Load K562 PSI data
+k562_psi.df <- fread("master_table_with_K562.tsv.gz") %>%
+  dplyr::filter(repeat_pair == TRUE) %>%
+  dplyr::filter(!str_detect(repeat_1, "No overlap")) %>%
+  dplyr::filter(!str_detect(repeat_2, "No overlap")) %>%
+  dplyr::filter(str_detect(repeat_1, "Alu") & str_detect(repeat_2, "Alu")) # %>% dplyr::filter(alternative == "alternative")
+
+
+stopifnot(nrow(semi_join(k562_psi.df, alu.df, by = c("transcript_ID", "repeat_1", "repeat_2", "pair_type", "score", "exon_sequence"))) == nrow(k562_psi.df))
+
+
+# Match the repeat pair id from the background Alus
+k562_psi.df <- left_join(k562_psi.df, 
+                           alu.df %>%
+                             dplyr::select(transcript_ID, repeat_1, repeat_2, pair_type, id, score, exon_sequence),
+                           by = c("transcript_ID", "repeat_1", "repeat_2", "pair_type", "score", "exon_sequence")) %>%
+  mutate(group = case_when(pair_type == "direct" ~ "background_direct",
+                           TRUE ~ "background_inverted"))
+
+# Now assign them in the KARR-seq HEK293 overlapped data
+karrseq_k562_psi.df <- k562_psi.df %>%
+  dplyr::filter(id %in% unique(karrseq_nuc.dt$id)) %>%
+  mutate(group = case_when(pair_type == "direct" ~ "KARR-seq_direct",
+                           TRUE ~ "KARR-seq_inverted"))
+
+
+psi_k562.df <- bind_rows(k562_psi.df, karrseq_k562_psi.df)
+
+plot_df_k562 <- psi_k562.df %>%
+  filter(!is.na(PSI_K562)) %>%
+  mutate(Group = factor(case_when(
+    group == "background_direct" ~ "Background direct\nAlu-pairs",
+    group == "KARR-seq_direct" ~ "KARR-seq captured\ndirect Alu-pairs",
+    group == "background_inverted" ~ "Background inverted\nAlu-pairs",
+    group == "KARR-seq_inverted" ~ "KARR-seq captured\ninverted Alu-pairs"
+  )))
+
+star_direct_k562 <- get_ks_pvalue(
+  plot_df_k562$PSI_K562[plot_df_k562$Group == "Background direct\nAlu-pairs"],
+  plot_df_k562$PSI_K562[plot_df_k562$Group == "KARR-seq captured\ndirect Alu-pairs"])
+star_inverted_k562 <- get_ks_pvalue(
+  plot_df_k562$PSI_K562[plot_df_k562$Group == "Background inverted\nAlu-pairs"],
+  plot_df_k562$PSI_K562[plot_df_k562$Group == "KARR-seq captured\ninverted Alu-pairs"])
+
+
+# Get y max for annotations
+y_top <- max(plot_df_k562$PSI_K562, na.rm = TRUE) + 1.5
+y_star <- y_top + 0.5
+
+
+k562_fig_s2b.gg <- ggplot(plot_df_k562, aes(x = Group, y = PSI_K562, fill = Group)) +
+  geom_violin(trim = TRUE, alpha = 0.82, bw = 1) +
+  geom_boxplot(width = 0.05, outlier.shape = NA, fill = "black", color = "grey", linewidth = 0.3) +
+  scale_fill_manual(values = colors_group) +
+  theme_minimal(base_size = 11) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 9),
+    axis.title.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.position = "none"
+  ) +
+  coord_cartesian(ylim = c(80, 103)) +
+  scale_y_continuous(breaks = seq(80, 100, 5)) +
+  ylab("PSI (K562 cells)") +
+  annotate("segment", x = 1, xend = 2, y = y_top, yend = y_top, color = "black") +
+  annotate("text", x = 1.5, y = y_star, label = star_direct_k562, size = 3) +
+  annotate("segment", x = 3, xend = 4, y = y_top, yend = y_top, color = "black") +
+  annotate("text", x = 3.5, y = y_star, label = star_inverted_k562, size = 3) 
+
+k562_fig_s2b.gg
+```
+
+# Fig S2: Final plot
+
+```{r}
+# Final composite plot
+fig_s2.gg <- plot_grid(karrseq_fig_s2a,
+                            plot_grid(hek293_fig_s2b.gg, k562_fig_s2b.gg, ncol = 1), 
+                            ncol = 2, rel_widths = c(1, 1))
+print(fig_s2.gg)
+
+ggsave("fig_s2.pdf", fig_s2.gg, width = 7, height = 4)
+ggsave("fig_s2.png", fig_s2.gg, width = 7, height = 4)
+```
+
